@@ -23,7 +23,7 @@ st.markdown("""
 # Header
 col1, col2 = st.columns([1, 5])
 with col1:
-    st.image("https://cdn-icons-png.flaticon.com/512/10861/10861082.png", width=100)
+    st.image("monitoring-system.png", width=100)
 with col2:
     st.markdown("<h1 style='margin:0;'>Smart Home Energy Monitor</h1>", unsafe_allow_html=True)
     st.markdown("**Real-time Energy • Comfort • Motion • Cost Intelligence**")
@@ -57,7 +57,6 @@ for col in energy_cols:
 df['Total_Energy_kWh'] = df[energy_cols].sum(axis=1)
 
 # =========================== SIDEBAR ===========================
-st.sidebar.image("https://cdn-icons-png.flaticon.com/512/10861/10861082.png", width=80)
 st.sidebar.markdown("<h2 style='text-align:center;'>Controls</h2>", unsafe_allow_html=True)
 
 selected_room = st.sidebar.selectbox("Room", ['All'] + sorted(df['Room'].unique().tolist()))
