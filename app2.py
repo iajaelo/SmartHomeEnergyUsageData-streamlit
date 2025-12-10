@@ -23,7 +23,7 @@ st.markdown("""
 # Header
 col1, col2 = st.columns([1, 5])
 with col1:
-    st.image("monitoring-system.png", width=150)
+    st.image("monitoring-system.png", width=130)
 with col2:
     st.markdown("<h1 style='margin:0;'>Smart Home Energy Monitor</h1>", unsafe_allow_html=True)
     st.markdown("**Real-time Energy • Comfort • Motion • Cost Intelligence**")
