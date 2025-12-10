@@ -103,13 +103,11 @@ with col1:
         hovermode='x unified',
         height=400,
         yaxis=dict(
-            title="Temperature °C",
-            titlefont=dict(color="#FF6B6B"),
+            title=dict(text="Temperature °C", font=dict(color="#FF6B6B")),
             tickfont=dict(color="#FF6B6B")
         ),
         yaxis2=dict(
-            title="Humidity %",
-            titlefont=dict(color="#4ECDC4"),
+            title=dict(text="Humidity (%)", font=dict(color="#4ECDC4")),
             tickfont=dict(color="#4ECDC4"),
             overlaying="y",
             side="right"
