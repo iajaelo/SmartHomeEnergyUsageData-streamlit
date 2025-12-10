@@ -1,68 +1,69 @@
-# app.py - Smart Home Energy & Environment Dashboard
+# app.py - Smart Home Energy Dashboard (FINAL VERSION)
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime
 
 # -------------------------- Page Config --------------------------
 st.set_page_config(
-    page_title="Smart Home Monitor",
+    page_title="Smart Home Energy Monitor",
+    page_icon="house",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 st.title("Smart Home Energy Usage Dashboard")
-st.markdown("### Real-time Temperature • Humidity • Light • Energy • Motion Detection")
+st.markdown("### Temperature • Humidity • Light • Energy • Motion Detection")
 
 # -------------------------- Load Data --------------------------
-@st.cache_data
+@st.cache_data(ttl=3600)  # Refresh cache every hour
 def load_data():
     try:
-        df = pd.read_csv("./smart_home_energy_usage_dataset.csv")
-    except:
+        # This works when file is in repo (GitHub + Streamlit Cloud)
+        df = pd.read_csv("smart_home_energy_usage_dataset.csv")
+        source = "smart_home_energy_usage_dataset.csv"
+    except FileNotFoundError:
+        # Fallback for local testing or if file missing
+        st.warning("Dataset not found in project folder. Please upload below.")
         uploaded = st.file_uploader(
-            "Upload your smart home data (CSV)",
+            "Upload your smart home CSV file",
             type=["csv"],
-            help="Expected columns: Home_ID, DateTime, Temperature_C, Humidity_%, Light_Lux, Motion_Sensor, Room, energy columns..."
+            key="upload"
         )
         if uploaded is None:
-            st.info("Upload `smart_home_data.csv` to begin")
+            st.info("Waiting for file upload...")
             st.stop()
         df = pd.read_csv(uploaded)
-    return df
+        source = "uploaded file"
+    return df, source
 
-df = load_data()
+df, source = load_data()
 
-# -------------------------- Data Preprocessing --------------------------
-df['DateTime'] = pd.to_datetime(df['DateTime'])
-df = df.sort_values('DateTime')
+# -------------------------- Preprocessing --------------------------
+df['DateTime'] = pd.to_datetime(df['DateTime'], errors='coerce')
+df = df.dropna(subset=['DateTime']).sort_values('DateTime').reset_index(drop=True)
 
-# Extract date & time
 df['Date'] = df['DateTime'].dt.date
-df['Time'] = df['DateTime'].dt.strftime('%H:%M')
 df['Hour'] = df['DateTime'].dt.hour
 df['Day'] = df['DateTime'].dt.day_name()
 
-# Total energy (if not already present)
+# Ensure energy columns are numeric
 energy_cols = ['Appliance_Usage_kWh', 'HVAC_Usage_kWh', 'Water_Heater_kWh']
 for col in energy_cols:
     if col in df.columns:
         df[col] = pd.to_numeric(df[col], errors='coerce')
 
-if 'Total_Energy_kWh' not in df.columns:
-    df['Total_Energy_kWh'] = df[energy_cols].sum(axis=1)
+df['Total_Energy_kWh'] = df[energy_cols].sum(axis=1, skipna=True)
 
-st.success(f"Loaded {len(df):,} sensor readings • {df['DateTime'].min().date()} to {df['DateTime'].max().date()}")
+st.success(f"Loaded **{len(df):,}** readings from **{source}**  \n"
+           f"Date range: {df['DateTime'].min().strftime('%b %d, %Y')} → {df['DateTime'].max().strftime('%b %d, %Y')}")
 
 # -------------------------- Sidebar Filters --------------------------
 st.sidebar.header("Filters")
 
-# Room selector
 rooms = ['All'] + sorted(df['Room'].unique().tolist())
-selected_room = st.sidebar.selectbox("Select Room", rooms)
+selected_room = st.sidebar.selectbox("Room", rooms)
 
-# Date range
 date_range = st.sidebar.date_input(
     "Date Range",
     value=(df['DateTime'].min().date(), df['DateTime'].max().date()),
@@ -70,17 +71,17 @@ date_range = st.sidebar.date_input(
     max_value=df['DateTime'].max().date()
 )
 
-# Motion filter
-motion_filter = st.sidebar.radio("Motion Sensor", ["All", "Active Only", "Inactive Only"])
+motion_filter = st.sidebar.radio("Motion Sensor", ["All", "Active Only", "Inactive Only"], horizontal=True)
 
-# Apply filters
+# -------------------------- Apply Filters --------------------------
 data = df.copy()
+
 if selected_room != 'All':
     data = data[data['Room'] == selected_room]
 
 data = data[
-    (data['DateTime'].dt.date >= date_range[0]) &
-    (data['DateTime'].dt.date <= date_range[1])
+    (data['Date'] >= date_range[0]) &
+    (data['Date'] <= date_range[1])
 ]
 
 if motion_filter == "Active Only":
@@ -93,109 +94,78 @@ if data.empty:
     st.stop()
 
 # -------------------------- Key Metrics --------------------------
-latest = data.sort_values('DateTime').groupby('Room').last().reset_index()
-
 col1, col2, col3, col4 = st.columns(4)
 with col1:
-    st.metric("Total Energy Today", f"{data['Total_Energy_kWh'].sum():.1f} kWh")
+    st.metric("Total Energy", f"{data['Total_Energy_kWh'].sum():.2f} kWh")
 with col2:
-    st.metric("Active Rooms", data[data['Motion_Sensor'] == 'Active']['Room'].nunique())
+    st.metric("Active Rooms", data[data['Motion_Sensor']=='Active']['Room'].nunique())
 with col3:
-    avg_temp = data['Temperature_C'].mean()
-    st.metric("Avg Temperature", f"{avg_temp:.1f}°C")
+    st.metric("Avg Temperature", f"{data['Temperature_C'].mean():.1f}°C")
 with col4:
-    avg_hum = data['Humidity_%'].mean()
-    st.metric("Avg Humidity", f"{avg_hum:.1f}%")
+    st.metric("Avg Humidity", f"{data['Humidity_%'].mean():.1f}%")
 
 st.markdown("---")
 
-# -------------------------- Chart 1: Energy Usage Over Time --------------------------
-st.subheader("Total Energy Consumption Over Time")
-fig1 = px.area(
-    data, x='DateTime', y='Total_Energy_kWh',
-    color='Room' if selected_room == 'All' else None,
-    title="Energy Usage (kWh) - Stacked by Room",
-    labels={'Total_Energy_kWh': 'Energy (kWh)'}
-)
-fig1.update_layout(height=500)
+# -------------------------- Charts --------------------------
+st.subheader("Energy Consumption Over Time")
+fig1 = px.area(data, x='DateTime', y='Total_Energy_kWh', color='Room',
+               title="Energy Usage by Room (Stacked)")
 st.plotly_chart(fig1, use_container_width=True)
 
-# -------------------------- Chart 2: Temperature & Humidity Dual Axis --------------------------
 st.subheader("Temperature & Humidity Trends")
 fig2 = go.Figure()
-
-fig2.add_trace(go.Scatter(
-    x=data['DateTime'], y=data['Temperature_C'],
-    name='Temperature (°C)', yaxis='y', line=dict(color='red')
-))
-fig2.add_trace(go.Scatter(
-    x=data['DateTime'], y=data['Humidity_%'],
-    name='Humidity (%)', yaxis='y2', line=dict(color='blue')
-))
-
+fig2.add_trace(go.Scatter(x=data['DateTime'], y=data['Temperature_C'], name="Temperature (°C)", line=dict(color="#FF6B6B")))
+fig2.add_trace(go.Scatter(x=data['DateTime'], y=data['Humidity_%'], name="Humidity (%)", yaxis="y2", line=dict(color="#4ECDC4")))
 fig2.update_layout(
-    title="Temperature & Humidity Over Time",
-    yaxis=dict(title="Temperature (°C)", titlefont=dict(color="red"), tickfont=dict(color="red")),
-    yaxis2=dict(title="Humidity (%)", titlefont=dict(color="blue"), tickfont=dict(color="blue"),
-                overlaying="y", side="right"),
-    height=500, hovermode='x unified'
+    yaxis=dict(title="Temperature °C", titlefont=dict(color="#FF6B6B")),
+    yaxis2=dict(title="Humidity %", overlaying="y", side="right", titlefont=dict(color="#4ECDC4")),
+    hovermode='x unified',
+    height=500
 )
 st.plotly_chart(fig2, use_container_width=True)
 
-# -------------------------- Chart 3: Motion Activity Heatmap --------------------------
-st.subheader("Motion Activity by Hour & Room")
-motion_pivot = data.pivot_table(
+st.subheader("Motion Activity Heatmap (Hour × Room)")
+pivot = data.pivot_table(
     index='Hour', columns='Room', values='Motion_Sensor',
     aggfunc=lambda x: (x == 'Active').sum(), fill_value=0
 )
-
-fig3 = px.imshow(
-    motion_pivot.values,
-    x=motion_pivot.columns,
-    y=motion_pivot.index,
-    labels=dict(color="Motion Events"),
-    color_continuous_scale="Viridis",
-    title="Motion Sensor Triggers by Hour of Day"
-)
-fig3.update_layout(height=500)
+fig3 = px.imshow(pivot.values, x=pivot.columns, y=pivot.index,
+                 labels=dict(color="Motion Events"), color_continuous_scale="Blues",
+                 title="When Are People in Each Room?")
 st.plotly_chart(fig3, use_container_width=True)
 
-# -------------------------- Chart 4: Room Comparison (Box Plots) --------------------------
-st.subheader("Energy & Environment by Room")
+st.subheader("Room Comparison")
 tab1, tab2 = st.tabs(["Energy Usage", "Comfort Levels"])
 
 with tab1:
-    fig4a = px.box(data, x='Room', y='Total_Energy_kWh', color='Room',
-                   title="Total Energy Consumption by Room")
-    st.plotly_chart(fig4a, use_container_width=True)
+    fig_box = px.box(data, x='Room', y='Total_Energy_kWh', color='Room', title="Energy per Room")
+    st.plotly_chart(fig_box, use_container_width=True)
 
 with tab2:
-    col_a, col_b = st.columns(2)
-    with col_a:
-        fig_temp = px.box(data, x='Room', y='Temperature_C', color='Room',
-                          title="Temperature Distribution")
-        st.plotly_chart(fig_temp, use_container_width=True)
-    with col_b:
-        fig_hum = px.box(data, x='Room', y='Humidity_%', color='Room',
-                         title="Humidity Distribution")
-        st.plotly_chart(fig_hum, use_container_width=True)
+    c1, c2 = st.columns(2)
+    with c1:
+        st.plotly_chart(px.box(data, x='Room', y='Temperature_C', color='Room', title="Temperature"), use_container_width=True)
+    with c2:
+        st.plotly_chart(px.box(data, x='Room', y='Humidity_%', color='Room', title="Humidity"), use_container_width=True)
 
-# -------------------------- Live Table --------------------------
+# -------------------------- Latest Readings --------------------------
 st.markdown("---")
-st.subheader("Latest Sensor Readings")
-latest_readings = data.sort_values('DateTime', ascending=False).head(20)
-display_cols = ['DateTime', 'Home_ID', 'Room', 'Temperature_C', 'Humidity_%',
-                'Light_Lux', 'Total_Energy_kWh', 'Motion_Sensor']
-
+st.subheader("Latest 20 Sensor Readings")
+latest = data.sort_values('DateTime', ascending=False).head(20)
 st.dataframe(
-    latest_readings[display_cols].round(2),
+    latest[['DateTime', 'Home_ID', 'Room', 'Temperature_C', 'Humidity_%', 'Light_Lux', 'Total_Energy_kWh', 'Motion_Sensor']],
     use_container_width=True,
     hide_index=True
 )
 
-# Download
+# -------------------------- Download --------------------------
 csv = data.to_csv(index=False)
-st.download_button("Download filtered data", csv, "smart_home_filtered.csv", "text/csv")
+st.download_button(
+    "Download Filtered Data",
+    data=csv,
+    file_name="smart_home_filtered.csv",
+    mime="text/csv"
+)
 
 
 
