@@ -1,4 +1,4 @@
-# app.py - Smart Home Energy Dashboard (ULTRA-FIXED VERSION)
+# app.py - Smart Home Energy Dashboard (FINAL FIXED VERSION)
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -96,7 +96,7 @@ st.subheader("Energy Consumption Over Time")
 fig1 = px.area(data, x='DateTime', y='Total_Energy_kWh', color='Room', title="Energy by Room")
 st.plotly_chart(fig1, use_container_width=True)
 
-# FIXED Dual-Axis Chart (compatible with all Plotly versions)
+# FIXED Dual-Axis Chart (compatible with all Plotly versions - no titlefont)
 st.subheader("Temperature & Humidity")
 if len(data) > 0:
     fig2 = go.Figure()
@@ -121,15 +121,16 @@ if len(data) > 0:
         title="Comfort Trends",
         height=500,
         hovermode="x unified",
-        # Safe axis config
-        yaxis_title="Temperature (°C)",
-        yaxis=dict(titlefont_color="#FF6B6B", tickfont_color="#FF6B6B"),
+        # Safe axis config - using title_text and font.color
+        yaxis=dict(
+            title=dict(text="Temperature (°C)", font=dict(color="#FF6B6B")),
+            tickfont=dict(color="#FF6B6B"),
+        ),
         yaxis2=dict(
-            title="Humidity (%)",
+            title=dict(text="Humidity (%)", font=dict(color="#4ECDC4")),
             overlaying="y",
             side="right",
-            titlefont_color="#4ECDC4",
-            tickfont_color="#4ECDC4"
+            tickfont=dict(color="#4ECDC4")
         )
     )
     st.plotly_chart(fig2, use_container_width=True)
@@ -184,4 +185,7 @@ st.dataframe(latest_df, use_container_width=True, hide_index=True)
 
 # Download
 st.download_button("Download Filtered CSV", data.to_csv(index=False), "filtered_data.csv")
+
+
+
 
